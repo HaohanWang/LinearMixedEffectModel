@@ -2,12 +2,15 @@ __author__ = 'haohanwang'
 
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
-
 import numpy as np
+
 
 def i(X):
     return np.linalg.inv(X)
 
+
+def p(X):
+    return np.linalg.pinv(X)
 
 
 # data = sm.datasets.get_rdataset('dietox', 'geepack').data
@@ -35,46 +38,48 @@ class LMM:
         self.X = None
         self.Z = None
         self.y = None
-        self.ZZt = None # Z * Z.T
+        self.ZZt = None  # Z * Z.T
+        self.q = None  # dimension of mu
+        self.sig = None
 
     def _d(self):
-        return np.var(self.mu)**2
+        return np.diag(np.square(self.mu.T.tolist()[0]))
 
     def _v(self):
-        # TODO: check this
         D = self._d()
-        return self.Z*D*self.Z.T
+        return self.Z * D * self.Z.T
 
     def log_likelihood(self):
-        ym = self.y - self.y - self.X*self.beta
+        ym = self.y - self.y.T - self.X * self.beta
         V = self._v()
         [sign, ld] = np.linalg.slogdet(V)
-        return - 0.5 * ym.T*i(V)*ym - 0.5 * ld  # missing constant term
+        return - 0.5 * ym.T * i(V) * ym - 0.5 * ld  # missing constant term
 
     def neg_log_likelihood(self):
-        ym = self.y - self.y - self.X*self.beta
+        ym = self.y.T - self.X * self.beta
         V = self._v()
         [sign, ld] = np.linalg.slogdet(V)
-        return 0.5 * ym.T*i(V)*ym + 0.5 * ld + self.l1*(np.abs(self.beta.sum) + np.abs(self.mu.sum())) # missing constant term
+        return 0.5 * ym.T * i(V) * ym + 0.5 * ld + self.l1 * (
+        np.abs(self.beta.sum()) + np.abs(self.mu.sum()))  # missing constant term
 
     def nll_d_beta(self):
         D = self._d()
-        db = (self.X*self.beta - self.y).T*self.Z*D*self.Z.T*self.X
+        db = ((self.X * self.beta - self.y.T).T * self.Z * D * self.Z.T * self.X).T
         l1 = self.l1 * self.beta
         return db - l1
 
     def nll_d_mu(self):
         D = self._d()
-        r = self.y - self.X*self.beta
-        du = (r.T*self.ZZt*r + i(self.Z*D*self.Z.T).T)*self.mu.T
+        r = self.y.T - self.X * self.beta
+        du = (r.T * self.ZZt * r + i(self.Z * D * self.Z.T).T) * self.mu.T
         l1 = self.l1 * self.mu
         return du - l1
 
     def sgd(self):
         nll_prev = self.neg_log_likelihood()
         for epoch in range(self.epochs):
-            self.beta = self.beta + self.step_size*self.nll_d_beta()
-            self.mu = self.mu + self.step_size*self.nll_d_mu()
+            self.beta = self.beta + self.step_size * self.nll_d_beta()
+            self.mu = self.mu + self.step_size * self.nll_d_mu()
             nll = self.neg_log_likelihood()
             if nll >= nll_prev:
                 print 'Early Stop'
@@ -82,15 +87,15 @@ class LMM:
             nll_prev = nll
 
     def _sigma(self):
-        return np.square(self.mu)
+        return (np.square(self.mu)) / self.q
 
     def m_step(self, sig, inV):
-        self.beta = i(self.X)*(self.X*self.beta + sig*self.X*i(self.X.T*self.X)*self.X.T*inV*(self.y-self.X*self.beta))
+        self.beta = p(self.X) * (self.X * self.beta + sig[0, 0] * self.X * i(self.X.T * self.X) * self.X.T * inV * (
+        self.y.T - self.X * self.beta))
 
     def e_step(self, sig, inV):
-        sig = self._sigma()
-        r = self.y - self.X*self.beta
-        sig = sig + np.square(sig)*(r.T*inV*self.ZZt*inV*r - np.trace(self.Z.T*inV*self.Z))
+        r = self.y.T - self.X * self.beta
+        sig = sig + np.square(sig) * (r.T * inV * self.ZZt * inV * r - np.trace(self.Z.T * inV * self.Z))
         self.mu = np.sqrt(sig)
 
     def em(self):
@@ -101,15 +106,16 @@ class LMM:
             self.m_step(sig, inV)
             self.e_step(sig, inV)
             nll = self.neg_log_likelihood()
-            if nll >= nll_prev:
-                print 'Early Stop'
-                break
+            print nll
+            # if nll >= nll_prev:
+            #     print 'Early Stop'
+            #     break
             nll_prev = nll
 
     def predict(self, X, Z):
-        return X*self.beta + Z* self.mu
+        return X * self.beta + Z * self.mu
 
-    def train(self, X, Z, y, method='EM', cost='ML', epochs=1000, step_size = 1):
+    def train(self, X, Z, y, method='EM', cost='ML', epochs=1000, step_size=1):
         '''
         :param X: fixed effect input
         :param Z: random effect input
@@ -122,9 +128,12 @@ class LMM:
         self.X = np.matrix(X)
         self.Z = np.matrix(Z)
         self.y = np.matrix(y)
-        self.ZZt = Z*Z.T
+        self.ZZt = Z * Z.T
+        np.random.seed(0)
         self.beta = np.matrix(np.random.random((shp1[1], 1)))
+        np.random.seed(0)
         self.mu = np.matrix(np.random.random((shp2[1], 1)))
+        self.q = shp2[1]
         self.epochs = epochs
         self.step_size = step_size
         if cost == 'ML':
@@ -142,3 +151,14 @@ class LMM:
         else:
             print 'ERROR'
             return None
+
+
+if __name__ == '__main__':
+    import pickle
+
+    data = pickle.load(open('../data/synthetic.pkl'))
+    X = data['X']
+    Z = data['Z']
+    y = data['y']
+    lmm = LMM()
+    lmm.train(X, Z, y, method='EM')
