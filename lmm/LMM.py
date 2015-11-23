@@ -3,6 +3,7 @@ __author__ = 'haohanwang'
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import numpy as np
+from scipy.special import expit
 
 
 def i(X):
@@ -89,31 +90,31 @@ class LMM:
     def _sigma(self):
         return (np.square(self.mu)) / self.q
 
-    def m_step(self, sig, inV):
-        self.beta = p(self.X) * (self.X * self.beta + sig[0, 0] * self.X * i(self.X.T * self.X) * self.X.T * inV * (
+    def m_step(self, inV):
+        self.beta = p(self.X) * (self.X * self.beta + self.sig[0, 0] * self.X * i(self.X.T * self.X) * self.X.T * inV * (
         self.y.T - self.X * self.beta))
 
-    def e_step(self, sig, inV):
+    def e_step(self, inV):
         r = self.y.T - self.X * self.beta
-        sig = sig + np.square(sig) * (r.T * inV * self.ZZt * inV * r - np.trace(self.Z.T * inV * self.Z))
-        self.mu = np.sqrt(sig)
+        self.sig = self.sig + np.square(self.sig) * (r.T * inV * self.ZZt * inV * r - np.trace(self.Z.T * inV * self.Z))
+        # self.mu = np.sqrt(sig)
 
     def em(self):
         nll_prev = self.neg_log_likelihood()
         for epoch in range(self.epochs):
-            sig = self._sigma()
+            self.sig = self._sigma()
             inV = i(self._v())
-            self.m_step(sig, inV)
-            self.e_step(sig, inV)
+            self.m_step(inV)
+            self.e_step(inV)
             nll = self.neg_log_likelihood()
             print nll
-            # if nll >= nll_prev:
-            #     print 'Early Stop'
-            #     break
+            if nll >= nll_prev:
+                print 'Early Stop'
+                break
             nll_prev = nll
 
     def predict(self, X, Z):
-        return X * self.beta + Z * self.mu
+        return expit(X * self.beta + Z * self.mu)
 
     def train(self, X, Z, y, method='EM', cost='ML', epochs=1000, step_size=1):
         '''
@@ -162,3 +163,6 @@ if __name__ == '__main__':
     y = data['y']
     lmm = LMM()
     lmm.train(X, Z, y, method='EM')
+    y_pred = lmm.predict(X, Z)
+    shp = y.shape
+    print len(np.where(y_pred.reshape(shp) == y)[0])/float(shp[0])
