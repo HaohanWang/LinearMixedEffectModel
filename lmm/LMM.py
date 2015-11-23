@@ -9,7 +9,6 @@ from scipy.special import expit
 def i(X):
     return np.linalg.inv(X)
 
-
 def p(X):
     return np.linalg.pinv(X)
 
@@ -38,15 +37,41 @@ class LMM:
         [sign, ld] = np.linalg.slogdet(V)
         return - 0.5 * ym.T * i(V) * ym - 0.5 * ld  # missing constant term
 
-    def neg_log_likelihood(self):
+    def nll(self):
         ym = self.y.T - self.X * self.beta
         V = self._v()
         [sign, ld] = np.linalg.slogdet(V)
-        return 0.5 * ym.T * i(V) * ym + 0.5 * ld + self.l1 * (
-        np.abs(self.beta.sum()) + np.abs(self.mu.sum()))  # missing constant term
+        return 0.5 * ym.T * i(V) * ym + 0.5 * ld  # missing constant term
 
+    def nll_d_sigma(self):
+        V = self._v()
+        inV = i(V)
+        ym = self.y.T - self.X*self.beta
 
+        # derivatives
+        d_V_D = self.ZZt
+        d_b_V = self._nll_b_d_V(inV)
+        d_nll_b = -self.X.T
+        d_nll_d = d_nll_b*d_b_V*d_V_D
 
+        tmp1 = d_nll_d*V*ym + ym.T*d_V_D*ym + ym.T*V*d_nll_d
+        tmp2 = i(V.T)*d_V_D
+
+        return tmp1 + tmp2
+
+    def _nll_b_d_V(self, inV):
+        xvx = self.X.T*inV*self.X
+        ixvx = i(xvx)
+        xx = self.X.T*self.X
+        tmp1 = np.trace((ixvx*xx*ixvx).T*inV*inV)*self.X.T*inV*self.y
+        tmp2 = ixvx*inV.T*self.X.T*self.y*inV.T
+        return tmp1 - tmp2
+
+    def sgd(self):
+        D = self._d()
+        for epoch in range(self.epochs):
+            grad = self.nll_d_sigma()
+            D = D - self.step_size*grad
 
 
     def predict(self, X, Z):
@@ -75,7 +100,7 @@ class LMM:
         self.step_size = step_size
         if cost == 'ML':
             if method == 'SGD':
-                pass
+                self.sgd()
             elif method == 'EM':
                 pass
             elif method == 'Newton':
@@ -98,7 +123,7 @@ if __name__ == '__main__':
     Z = data['Z']
     y = data['y']
     lmm = LMM()
-    lmm.train(X, Z, y, method='EM')
+    lmm.train(X, Z, y, method='SGD')
     y_pred = lmm.predict(X, Z)
     shp = y.shape
     print len(np.where(y_pred.reshape(shp) == y)[0])/float(shp[0])
