@@ -13,24 +13,6 @@ def i(X):
 def p(X):
     return np.linalg.pinv(X)
 
-
-# data = sm.datasets.get_rdataset('dietox', 'geepack').data
-#
-# print data.shape
-#
-# d = np.zeros((861, 7))
-#
-# i = 0
-# for k in data:
-#     d[:, i] = data[k]
-#     i += 1
-#
-# print d
-#
-# md = smf.mixedlm('Weight ~ Feed', data=data, groups=data['Pig'])
-# mdf = md.fit()
-# print mdf.summary()
-
 class LMM:
     def __init__(self, l1=0):
         self.l1 = l1
@@ -63,55 +45,9 @@ class LMM:
         return 0.5 * ym.T * i(V) * ym + 0.5 * ld + self.l1 * (
         np.abs(self.beta.sum()) + np.abs(self.mu.sum()))  # missing constant term
 
-    def nll_d_beta(self):
-        D = self._d()
-        db = ((self.X * self.beta - self.y.T).T * self.Z * D * self.Z.T * self.X).T
-        l1 = self.l1 * self.beta
-        return db - l1
 
-    def nll_d_mu(self):
-        D = self._d()
-        r = self.y.T - self.X * self.beta
-        du = (r.T * self.ZZt * r + i(self.Z * D * self.Z.T).T) * self.mu.T
-        l1 = self.l1 * self.mu
-        return du - l1
 
-    def sgd(self):
-        nll_prev = self.neg_log_likelihood()
-        for epoch in range(self.epochs):
-            self.beta = self.beta + self.step_size * self.nll_d_beta()
-            self.mu = self.mu + self.step_size * self.nll_d_mu()
-            nll = self.neg_log_likelihood()
-            if nll >= nll_prev:
-                print 'Early Stop'
-                break
-            nll_prev = nll
 
-    def _sigma(self):
-        return (np.square(self.mu)) / self.q
-
-    def m_step(self, inV):
-        self.beta = p(self.X) * (self.X * self.beta + self.sig[0, 0] * self.X * i(self.X.T * self.X) * self.X.T * inV * (
-        self.y.T - self.X * self.beta))
-
-    def e_step(self, inV):
-        r = self.y.T - self.X * self.beta
-        self.sig = self.sig + np.square(self.sig) * (r.T * inV * self.ZZt * inV * r - np.trace(self.Z.T * inV * self.Z))
-        # self.mu = np.sqrt(sig)
-
-    def em(self):
-        nll_prev = self.neg_log_likelihood()
-        for epoch in range(self.epochs):
-            self.sig = self._sigma()
-            inV = i(self._v())
-            self.m_step(inV)
-            self.e_step(inV)
-            nll = self.neg_log_likelihood()
-            print nll
-            if nll >= nll_prev:
-                print 'Early Stop'
-                break
-            nll_prev = nll
 
     def predict(self, X, Z):
         return expit(X * self.beta + Z * self.mu)
@@ -139,9 +75,9 @@ class LMM:
         self.step_size = step_size
         if cost == 'ML':
             if method == 'SGD':
-                self.sgd()
+                pass
             elif method == 'EM':
-                self.em()
+                pass
             elif method == 'Newton':
                 pass
             else:
