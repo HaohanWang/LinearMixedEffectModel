@@ -23,16 +23,16 @@ class LMM:
         self.ZZt = None  # Z * Z.T
         self.q = None  # dimension of mu
         self.sig = None
+        self.D = None
 
     def _d(self):
         return np.diag(np.square(self.mu.T.tolist()[0]))
 
     def _v(self):
-        D = self._d()
-        return self.Z * D * self.Z.T
+        return self.Z * self.D * self.Z.T
 
     def log_likelihood(self):
-        ym = self.y - self.y.T - self.X * self.beta
+        ym = self.y.T - self.X * self.beta
         V = self._v()
         [sign, ld] = np.linalg.slogdet(V)
         return - 0.5 * ym.T * i(V) * ym - 0.5 * ld  # missing constant term
@@ -73,11 +73,27 @@ class LMM:
             grad = self.nll_d_sigma()
             D = D - self.step_size*grad
 
+    def em(self):
+        V = self._v()
+        prev_ll = self.log_likelihood()
+        print prev_ll
+        for epoch in range(self.epochs):
+            ym = self.y.T - self.X*self.beta
+            grad = self.Z.T*ym*ym.T*self.Z + self.Z.T*(i(V.T)).T*self.Z
+            self.D += self.step_size*grad
+            V = self._v()
+            inV = i(V)
+            self.beta = i(self.X.T*inV*self.X)*self.X.T*inV*self.y.T
+            self.mu = self.D*self.Z.T*inV*(self.y.T - self.X*self.beta)
+            # print self.beta.mean()
+            ll = self.log_likelihood()[0,0]
+            print ll
+
 
     def predict(self, X, Z):
         return expit(X * self.beta + Z * self.mu)
 
-    def train(self, X, Z, y, method='EM', cost='ML', epochs=1000, step_size=1):
+    def train(self, X, Z, y, method='EM', cost='ML', epochs=0, step_size=1e-10):
         '''
         :param X: fixed effect input
         :param Z: random effect input
@@ -98,11 +114,12 @@ class LMM:
         self.q = shp2[1]
         self.epochs = epochs
         self.step_size = step_size
+        self.D = self._d()
         if cost == 'ML':
             if method == 'SGD':
                 self.sgd()
             elif method == 'EM':
-                pass
+                self.em()
             elif method == 'Newton':
                 pass
             else:
@@ -123,7 +140,12 @@ if __name__ == '__main__':
     Z = data['Z']
     y = data['y']
     lmm = LMM()
-    lmm.train(X, Z, y, method='SGD')
+    lmm.train(X, Z, y, method='EM')
     y_pred = lmm.predict(X, Z)
+    ind = np.where(y_pred<=0.5)
+    y_pred[ind] = 0
+    ind = np.where(y_pred>0.5)
+    y_pred[ind] = 1
+    print y_pred
     shp = y.shape
     print len(np.where(y_pred.reshape(shp) == y)[0])/float(shp[0])
