@@ -93,6 +93,7 @@ class LMM:
     def em(self):
         self.D = (self.mu.T*self.mu/self.q)[0,0]
         prev_ll = self.log_likelihood()
+        prev_ll = -float('inf')
         print prev_ll
         xb = self.X*self.beta
         ixx = i(self.X.T*self.X)
@@ -140,7 +141,7 @@ class LMM:
         self.beta = i(self.X.T * inV * self.X) * self.X.T * inV * self.y.T
         self.mu = self.D * self.Z.T * Py
 
-    def clasify(self, X, Z):
+    def classify(self, X, Z):
         y_pred = expit(X * self.beta)
         m = np.mean(y_pred)
         ind = np.where(y_pred <= m)
@@ -194,15 +195,17 @@ class LMM:
 if __name__ == '__main__':
     import pickle
     plr = PLFR('../data/sampleData/')
-    X, Z, y = plr.readFile('geno_test.tped', 'geno_cov.tped', 'pheno.txt', phenoCol=3)
+    X, Z, y = plr.readFile('geno_test.tped', 'geno_cov.tped', 'pheno.txt', phenoCol=2)
     print X.shape
     print Z.shape
     print y.shape
 
     lmm = LMM()
     lmm.train(X, Z, y, method='EM')
-    y_pred = lmm.regress(X, Z)
+    y_pred = lmm.classify(X, Z)
     # print y_pred
     shp = y.shape
-    # print len(np.where(y_pred.reshape(shp) == y)[0]) / float(shp[0])
-    print np.square(y-y_pred).mean()
+    print len(np.where(y_pred.reshape(shp) == y)[0]) / float(shp[0])
+    print y_pred
+    print y
+    # print np.square(y-y_pred).mean()

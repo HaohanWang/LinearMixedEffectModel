@@ -28,14 +28,26 @@ class PLinkFormatReader():
         m = 1 if header else 0
         text = [line.strip() for line in open(self.path + phenoFile)][m:]
         data = []
+        mapping = []
         for line in text:
             items = line.split()
-            data.append(float(items[col]))
-        return np.array(data)
+            k = float(items[col])
+            data.append(k)
+            if k == -9:
+                mapping.append(0)
+            else:
+                mapping.append(1)
+
+        return np.array(data), np.array(mapping)
 
     def readFile(self, gene1File, gene2File, phenoFile, phenoCol=2, geneFileHeader=False, phenoFileHeader=True):
         gene1 = self.read_gene_tpedFile(gene1File, geneFileHeader)
         gene2 = self.read_gene_tpedFile(gene2File, geneFileHeader)
-        pheno = self.read_phenoFile(phenoFile, phenoCol, phenoFileHeader)
+        pheno, mapping = self.read_phenoFile(phenoFile, phenoCol, phenoFileHeader)
+        ind = np.where(mapping == 1)
+        print ind
+        gene1 = gene1[ind]
+        gene2 = gene2[ind]
+        pheno = pheno[ind]
         return gene1, gene2, pheno
 
