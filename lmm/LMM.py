@@ -4,6 +4,7 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import numpy as np
 from scipy.special import expit
+from utility.dataManager import PLinkFormatReader as PLFR
 
 
 def i(X):
@@ -26,7 +27,7 @@ class LMM:
         self.D = None
 
     def _d(self):
-        return np.diag(np.square(self.mu.T.tolist()[0]))
+        return np.diag(np.square(self.mu.T.tolist()[0])) # self.mu.T*self.mu
 
     def _v(self):
         return self.Z * self.D * self.Z.T
@@ -88,13 +89,34 @@ class LMM:
     #         ll = self.log_likelihood()[0,0]
     #         print ll
 
+
     def em(self):
+        self.D = (self.mu.T*self.mu/self.q)[0,0]
+        prev_ll = self.log_likelihood()
+        print prev_ll
+        xb = self.X*self.beta
+        ixx = i(self.X.T*self.X)
+        V = self.ZZt
+        inV = i(V)
+        ym = self.y.T - self.X*self.beta
+        for epoch in range(self.epochs):
+            xb += self.D*self.X*ixx*self.X.T*inV*ym
+            ym = self.y.T - xb
+            self.D += self.D**2/self.q * ((ym.T*inV*self.ZZt*inV*ym) - np.trace(self.Z.T*inV*self.Z))
+            self.D = self.D[0,0]
+            print self.D
+            curr_ll = self.log_likelihood()
+            print curr_ll
+            if curr_ll < prev_ll:
+                break
+            prev_ll = curr_ll
+
+
+    def em_multi_variance(self):
         prev_ll = self.log_likelihood()
         print prev_ll
         sigma = np.square(self.mu)
         sig = sigma.T.tolist()[0]
-        # print sig
-
         zshp = self.Z.shape
 
         V = self._v()
@@ -130,7 +152,7 @@ class LMM:
     def regress(self, X, Z):
         return X*self.beta
 
-    def train(self, X, Z, y, method='EM', cost='ML', epochs=5, step_size=1):
+    def train(self, X, Z, y, method='EM', cost='ML', epochs=50, step_size=1):
         '''
         :param X: fixed effect input
         :param Z: random effect input
@@ -147,7 +169,7 @@ class LMM:
         np.random.seed(0)
         self.beta = np.matrix(np.random.random((shp1[1], 1)))
         np.random.seed(0)
-        self.mu = np.matrix(np.random.random((shp2[1], 1)))
+        self.mu = np.matrix(np.random.random((shp2[1], 1))) - 0.5
         self.q = shp2[1]
         self.epochs = epochs
         self.step_size = step_size
@@ -171,15 +193,16 @@ class LMM:
 
 if __name__ == '__main__':
     import pickle
+    plr = PLFR('../data/sampleData/')
+    X, Z, y = plr.readFile('geno_test.tped', 'geno_cov.tped', 'pheno.txt', phenoCol=3)
+    print X.shape
+    print Z.shape
+    print y.shape
 
-    data = pickle.load(open('../data/pig.pkl'))
-    X = data['X']
-    Z = data['Z']
-    y = data['y']
     lmm = LMM()
     lmm.train(X, Z, y, method='EM')
     y_pred = lmm.regress(X, Z)
     # print y_pred
-    # shp = y.shape
+    shp = y.shape
     # print len(np.where(y_pred.reshape(shp) == y)[0]) / float(shp[0])
     print np.square(y-y_pred).mean()
